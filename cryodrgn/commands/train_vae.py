@@ -853,6 +853,7 @@ def main(args: argparse.Namespace) -> None:
     #     feat_sigma=args.feat_sigma,
     #     tilt_params=tilt_params,
     # )
+
     model = HetOnlyVAE(
         lattice,
         args.qlayers,
@@ -869,9 +870,13 @@ def main(args: argparse.Namespace) -> None:
         activation=activation,
         feat_sigma=args.feat_sigma,
         tilt_params=tilt_params,
+
         decoder_type=args.decoder_type,
         n_gaussians=args.n_gaussians,
         gaussian_sigma=args.gaussian_sigma,
+
+        triplane_res=args.triplane_res,
+        triplane_dim=args.triplane_dim,
     )
     model.to(device)
     logger.info(model)

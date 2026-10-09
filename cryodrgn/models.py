@@ -12,7 +12,7 @@ from cryodrgn import fft, lie_tools, utils
 import cryodrgn.config
 from cryodrgn.lattice import Lattice
 from cryodrgn.decoders.base import Decoder
-from cryodrgn.decoders.gaussian import GaussianDecoder
+from cryodrgn.decoders.gaussian_e2gmm import GaussianDecoder
 from cryodrgn.decoders.triplane import TriplaneDecoder
 
 Norm = Sequence[Any]  # mean, std
