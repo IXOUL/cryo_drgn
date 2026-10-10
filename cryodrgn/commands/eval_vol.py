@@ -263,7 +263,7 @@ def main(args: argparse.Namespace) -> None:
             org = reset_origin(vol.shape[0], args.crop, args.Apix) if args.crop else {}
             vol = postprocess_vol(vol, args)
             write_mrc(
-                out_mrc, np.array(vol.cpu()).astype(np.float32), Apix=args.Apix, **org
+                out_mrc, vol.detach().cpu().numpy().astype(np.float32), Apix=args.Apix, **org
             )
 
     # Single z
@@ -273,7 +273,7 @@ def main(args: argparse.Namespace) -> None:
         vol = eval_volume_at_z(z)
         org = reset_origin(vol.shape[0], args.crop, args.Apix) if args.crop else {}
         vol = postprocess_vol(vol, args)
-        write_mrc(args.o, np.array(vol.cpu()).astype(np.float32), Apix=args.Apix, **org)
+        write_mrc(args.o, vol.detach().cpu().numpy().astype(np.float32), Apix=args.Apix, **org)
 
     td = dt.now() - t1
     logger.info(f"Finished in {td}")
