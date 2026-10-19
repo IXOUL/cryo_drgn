@@ -315,15 +315,21 @@ class DrgnAI(nn.Module):
                 trans = in_dict["t"]
                 pose_dict["t"] = trans
 
-        # random poses
+        # random rotations, ground-truth translations
         elif self.pretrain:
             in_dim = in_dict["y"].shape[:-2]
             device = in_dict["y_real"].device
+
+            # Keep random rotations for ab initio reconstruction
             pose_dict = {"R": lie_tools.random_rotmat(np.prod(in_dim), device=device)}
             pose_dict["R"] = pose_dict["R"].reshape(*in_dim, 3, 3)
-            if not self.no_trans:
-                pose_dict["t"] = torch.zeros((*in_dim, 2)).float().to(device)
 
+            if not self.no_trans:
+                if self.use_gt_trans:
+                    pose_dict["t"] = in_dict["t"]
+                else:
+                    pose_dict["t"] = torch.zeros((*in_dim, 2)).float().to(device)
+                
         # use pose search
         elif self.is_in_pose_search_step:
             self.hypervolume.eval()

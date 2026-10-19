@@ -527,6 +527,13 @@ def add_args(parser: argparse.ArgumentParser) -> None:
         help="Do not run analysis on the final training epoch",
     )
 
+    parser.add_argument(
+        "--gt-poses",
+        type=os.path.abspath,
+        default=None,
+        help="Ground-truth poses file; only translations are used.",
+    )
+
 
 class ModelTrainer:
     """An engine for training the DRGN-AI reconstruction model on particle data.
@@ -697,6 +704,20 @@ class ModelTrainer:
         self.n_tilts_dataset = self.data.N
         self.resolution = self.data.D
 
+        self.gt_trans = None
+
+        if self.configs.use_gt_trans:
+            poses = utils.load_pkl(self.configs.gt_poses)
+            gt_trans = np.asarray(poses[1], dtype=np.float32)
+
+            if self.index is not None:
+                gt_trans = gt_trans[self.index]
+
+            assert gt_trans.shape == (self.n_tilts_dataset, 2)
+
+            self.gt_trans = torch.from_numpy(gt_trans)
+            self.logger.info("Using ground-truth translations")
+
         # Load contrast transfer function parameters, if given
         if self.configs.ctf is not None:
             self.logger.info(f"Loading ctf params from {self.configs.ctf}")
@@ -820,7 +841,7 @@ class ModelTrainer:
             resolution_encoder=self.configs.resolution_encoder,
             no_trans=self.configs.no_trans,
             use_gt_poses=False,
-            use_gt_trans=False,
+            use_gt_trans=self.configs.use_gt_trans,
             will_use_point_estimates=will_use_point_estimates,
             ps_params=ps_params,
             verbose_time=self.configs.verbose_time,
@@ -1271,6 +1292,8 @@ class ModelTrainer:
 
         y_gt = in_dict["y"]
         ind = in_dict["index"]
+        if self.configs.use_gt_trans:
+            in_dict["t"] = self.gt_trans[ind.long()]
         in_dict["tilt_index"] = in_dict["index"]
         ind_tilt = in_dict["tilt_index"]
         self.total_batch_count += 1
@@ -1730,6 +1753,8 @@ def main(args: argparse.Namespace) -> None:
         seed=args.seed,
         norm=args.norm,
         initial_conf=args.initial_conf,
+        get_poses=args.gt_poses,
+        use_gt_trans=args.gt_poses is not None,
     )
 
     if cfg["load"] is not None:
