@@ -59,6 +59,13 @@ def add_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--load", help="Initialize training from a checkpoint")
     parser.add_argument("--load-poses", help="Initialize training from a checkpoint")
+
+    parser.add_argument(
+        "--gt-shifts",
+        type=os.path.abspath,
+        default=None,
+        help="CryoDRGN pose pickle (rot, trans); use GT centering shifts only"
+    )
     parser.add_argument(
         "--no-analysis",
         dest="do_analysis",
@@ -424,6 +431,19 @@ def make_model(args, lattice, enc_mask, in_dim) -> HetOnlyVAE:
         feat_sigma=args.feat_sigma,
     )
 
+def center_ht_with_gt_shifts(y, gt_shift_pixels, lattice):
+    """Center a BxDxD Hartley image batch with Bx2 centering shifts (pixels)."""
+    if gt_shift_pixels is None:
+        return y
+
+    B, D, _ = y.shape
+    assert D == lattice.D
+
+    return lattice.translate_ht(
+        y.reshape(B, -1),
+        gt_shift_pixels.unsqueeze(1)
+    ).squeeze(1).reshape(B, D, D)
+
 
 def pretrain(model, lattice, optim, minibatch, tilt, zdim):
     y, yt = minibatch
@@ -604,6 +624,7 @@ def eval_z(
     ctf_params=None,
     shuffler_size=0,
     seed=None,
+    gt_shifts=None,
 ):
     assert not model.training
 
@@ -619,6 +640,11 @@ def eval_z(
     for minibatch in data_generator:
         ind = minibatch["index"]
         y = minibatch["y"].to(device)
+
+        # Apply ground-truth shift correction
+        if gt_shifts is not None:
+            y = center_ht_with_gt_shifts(y, gt_shifts[ind], lattice)
+
         yt = None
         if use_tilt:
             yt = minibatch["tilt"].to(device)
@@ -811,6 +837,31 @@ def main(args):
     )
     Nimg, D = data.N, data.D
 
+
+    gt_shifts = None
+
+    if args.gt_shifts is not None:
+        assert args.tilt is None
+        assert args.t_extent == 0
+        assert args.t_ngrid == 1
+
+        gt_rot, gt_trans = utils.load_pkl(args.gt_shifts)
+
+        # Use translations only; NEVER use GT rotations
+        gt_trans = np.asarray(gt_trans, dtype=np.float32)
+
+        if ind is not None:
+            gt_trans = gt_trans[ind]
+
+        assert gt_trans.shape == (Nimg, 2)
+
+        # Convert box fractions to pixels
+        gt_shifts = torch.as_tensor(
+            gt_trans.copy(),
+            dtype=torch.float32,
+            device=device
+        ) * (D - 1)
+
     if args.encode_mode == "conv":
         assert D - 1 == 64, "Image size must be 64x64 for convolutional encoder"
 
@@ -984,12 +1035,25 @@ def main(args):
     global_it = 0
     logger.info("Using random poses for {} iterations".format(args.pretrain))
     for batch in data_iterator:
-        global_it += len(batch["index"])
+        batch_indices = batch["index"]
+        global_it += len(batch_indices)
+
         batch = (
             (batch["y"].to(device), None)
             if tilt is None
             else (batch["y"].to(device), batch["tilt"].to(device))
         )
+
+        if gt_shifts is not None:
+            batch = (
+                center_ht_with_gt_shifts(
+                    batch[0],
+                    gt_shifts[batch_indices],
+                    lattice
+                ),
+                batch[1]
+            )
+
         loss = pretrain(model, lattice, optim, batch, tilt=ps.tilt, zdim=args.zdim)
         if global_it % args.log_interval == 0:
             logger.info(f"[Pretrain Iteration {global_it}] loss={loss:4f}")
@@ -1046,6 +1110,17 @@ def main(args):
                 if tilt is None
                 else (batch["y"].to(device), batch["tilt"].to(device))
             )
+
+            if gt_shifts is not None:
+                batch = (
+                    center_ht_with_gt_shifts(
+                        batch[0],
+                        gt_shifts[ind],
+                        lattice
+                    ),
+                    batch[1]
+                )
+
             batch_it += len(batch[0])
             global_it = Nimg * (epoch - 1) + batch_it
 
@@ -1140,6 +1215,7 @@ def main(args):
                     ctf_params=ctf_params,
                     shuffler_size=args.shuffler_size,
                     seed=args.shuffle_seed,
+                    gt_shifts=gt_shifts,
                 )
                 save_checkpoint(
                     model,
@@ -1175,6 +1251,7 @@ def main(args):
             ctf_params=ctf_params,
             shuffler_size=args.shuffler_size,
             seed=args.shuffle_seed,
+            gt_shifts=gt_shifts,
         )
         save_checkpoint(
             model,

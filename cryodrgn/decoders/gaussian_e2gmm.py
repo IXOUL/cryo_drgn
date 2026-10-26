@@ -364,6 +364,8 @@ class GaussianDecoder(Decoder):
     ) -> Tensor:
         """
         Render rho_z(x) directly in real space, without Fourier/Hartley inversion.
+        Amplitudes are integrated Gaussian weights, matching _fourier_chunk().
+        Convert them to real-space peak density with 1/((2*pi)**1.5*sigma**3).
 
         This is intended as a sanity check for eval_volume().  The returned
         volume has shape (box_size, box_size, box_size), defaulting to D-1.
@@ -393,7 +395,7 @@ class GaussianDecoder(Decoder):
             diff = p[:, None, :] - centers[None, :, :]
             dist2 = torch.sum(diff * diff, dim=-1)
             density = torch.sum(
-                amplitudes[None, :]
+                (amplitudes / ((2.0 * math.pi) ** 1.5 * sigmas.pow(3)))[None, :]
                 * torch.exp(-dist2 / (2.0 * sigmas[None, :].pow(2))),
                 dim=-1,
             )
@@ -405,6 +407,7 @@ class GaussianDecoder(Decoder):
     # Volume evaluation for cryodrgn eval_vol / analyze
     # ------------------------------------------------------------------
 
+    @torch.no_grad()
     def eval_volume(
         self,
         coords: Tensor,
