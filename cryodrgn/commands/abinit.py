@@ -1753,7 +1753,7 @@ def main(args: argparse.Namespace) -> None:
         seed=args.seed,
         norm=args.norm,
         initial_conf=args.initial_conf,
-        get_poses=args.gt_poses,
+        gt_poses=args.gt_poses,
         use_gt_trans=args.gt_poses is not None,
     )
 
