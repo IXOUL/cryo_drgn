@@ -687,6 +687,7 @@ def save_checkpoint(
     out_z,
     out_poses,
     configs,
+    gt_trans_fraction=None,
 ):
     """Save model weights, latent encoding z, and decoder volumes"""
     # save model weights
@@ -714,6 +715,29 @@ def save_checkpoint(
         else:
             D = model.lattice.D
         pickle.dump((rot, trans / D), f)
+
+
+    # Additionally save estimated rotations + GT translations
+    # for fixed-pose Stage 2 training.
+    if gt_trans_fraction is not None:
+        rot = np.asarray(search_pose[0])
+        gt_trans_fraction = np.asarray(gt_trans_fraction)
+
+        assert rot.shape == (len(gt_trans_fraction), 3, 3)
+        assert gt_trans_fraction.shape == (len(rot), 2)
+
+        gt_filename = os.path.basename(out_poses).replace(
+            "pose", "poses_gtshift", 1
+        )
+        gt_path = os.path.join(
+            os.path.dirname(out_poses), gt_filename
+        )
+
+        with open(gt_path, "wb") as f:
+            pickle.dump((rot, gt_trans_fraction), f)
+
+        logger.info(f"Saved GT-shift fixed poses to {gt_path}")
+
 
 
 def save_config(args, dataset, lattice, model, out_config):
@@ -839,6 +863,7 @@ def main(args):
 
 
     gt_shifts = None
+    gt_trans_fraction = None
 
     if args.gt_shifts is not None:
         assert args.tilt is None
@@ -855,6 +880,8 @@ def main(args):
 
         assert gt_trans.shape == (Nimg, 2)
 
+        gt_trans_fraction = gt_trans.copy()
+
         # Convert box fractions to pixels
         gt_shifts = torch.as_tensor(
             gt_trans.copy(),
@@ -864,6 +891,7 @@ def main(args):
 
     if args.encode_mode == "conv":
         assert D - 1 == 64, "Image size must be 64x64 for convolutional encoder"
+
 
     # load ctf
     if args.ctf is not None:
@@ -1231,6 +1259,7 @@ def main(args):
                     out_z,
                     out_poses,
                     configs,
+                    gt_trans_fraction=gt_trans_fraction,
                 )
 
     # save model weights and evaluate the model on 3D lattice
@@ -1267,6 +1296,7 @@ def main(args):
             out_z,
             out_poses,
             configs,
+            gt_trans_fraction=gt_trans_fraction,
         )
 
     td = dt.now() - t1
