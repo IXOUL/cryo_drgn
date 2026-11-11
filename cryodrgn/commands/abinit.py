@@ -710,6 +710,10 @@ class ModelTrainer:
             poses = utils.load_pkl(self.configs.gt_poses)
             gt_trans = np.asarray(poses[1], dtype=np.float32)
 
+            # CryoBench pose translations are normalized by image size.
+            # Convert to pixels for lattice.translate_ht().
+            gt_trans = gt_trans * (self.data.D - 1)
+
             if self.index is not None:
                 gt_trans = gt_trans[self.index]
 
